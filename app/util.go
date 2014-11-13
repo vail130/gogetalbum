@@ -1,6 +1,7 @@
 package app
 
 import (
+	"compress/gzip"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -8,7 +9,7 @@ import (
 	"strings"
 )
 
-func getResponseBodyFromUrl(url string) ([]byte, error) {
+func getResponseBodyFromUrl(url string, gzipDeflate bool) ([]byte, error) {
 	client := &http.Client{}
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -33,13 +34,24 @@ func getResponseBodyFromUrl(url string) ([]byte, error) {
 		return nil, err
 	}
 
-	defer response.Body.Close()
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
+	dataSource := response.Body
+
+	if gzipDeflate {
+		defer dataSource.Close()
+		compressedData, err := gzip.NewReader(dataSource)
+	    if err != nil {
+	        return nil, err
+	    }
+		
+	    dataSource = compressedData
 	}
 
-	return data, err
+    defer dataSource.Close()
+    data, err := ioutil.ReadAll(dataSource)
+    if err != nil {
+        return nil, err
+    }
+	return data, nil
 }
 
 func fn(I []string, B string) int {
@@ -54,7 +66,7 @@ func fn(I []string, B string) int {
 func signUrl(url string) string {
 	A := map[string]int{"a": 870, "b": 906, "c": 167, "d": 119, "e": 130, "f": 899, "g": 248, "h": 123, "i": 627, "j": 706, "k": 694, "l": 421, "m": 214, "n": 561, "o": 819, "p": 925, "q": 857, "r": 539, "s": 898, "t": 866, "u": 433, "v": 299, "w": 137, "x": 285, "y": 613, "z": 635, "_": 638, "&": 639, "-": 880, "/": 687, "=": 721}
 	r3 := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-	F := 1.23413
+	F := 1.51214
 	N := 3219.0
 
 	var Q string
@@ -76,4 +88,18 @@ func signUrl(url string) string {
 
 	N = math.Floor((N * 1000.0) + 0.5)
 	return strconv.Itoa(int(N))
+}
+
+func cc(a string) string {
+	AM := 65521
+	b := 1
+	c := 0
+	var d int
+
+	for e := 0; e < len(a); e++ {
+		d = int([]byte(a)[e])
+		b = (b + d) % AM
+		c = (c + b) % AM
+	}
+	return strconv.Itoa(c << 16 | b)
 }

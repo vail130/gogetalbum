@@ -2,14 +2,14 @@ package app
 
 import (
 	"bytes"
-	// "encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
-	// "strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -105,7 +105,7 @@ func (app *App) GetTrackList() error {
 func (app *App) DownloadTracks() error {
 	var urlBuffer bytes.Buffer
 	var sourceUrlBuffer bytes.Buffer
-	var trackPathBuffer bytes.Buffer
+	var waitGroup sync.WaitGroup
 
 	for i, _ := range app.Tracklist {
 		urlBuffer.Reset()
@@ -128,73 +128,121 @@ func (app *App) DownloadTracks() error {
 		sourceUrlBuffer.WriteString(resourcePath)
 
 		app.Tracklist[i].SourceUrl = sourceUrlBuffer.String()
-		data, err := app.Tracklist[i].Download()
-		if err != nil {
-			return err
-		}
 
-		trackPathBuffer.Reset()
+		waitGroup.Add(1)
 
-		trackPathBuffer.WriteString(app.OutputDir)
-		trackPathBuffer.WriteString("/")
-		trackPathBuffer.WriteString(app.Artist)
-		trackPathBuffer.WriteString("/")
-		trackPathBuffer.WriteString(app.Album)
+		go func(app *App, track *Track, waitGroup *sync.WaitGroup) {
+			data, err := track.Download()
+			if err != nil {
+				return
+			}
 
-		err = os.MkdirAll(trackPathBuffer.String(), 0777)
-		if err != nil {
-			return err
-		}
+			var trackBuffer bytes.Buffer
 
-		trackPathBuffer.WriteString("/")
-		trackPathBuffer.WriteString(app.Tracklist[i].Title)
-		trackPathBuffer.WriteString(".mp3")
+			trackBuffer.WriteString(app.OutputDir)
+			trackBuffer.WriteString("/")
+			trackBuffer.WriteString(app.Artist)
+			trackBuffer.WriteString("/")
+			trackBuffer.WriteString(app.Album)
 
-		err = ioutil.WriteFile(trackPathBuffer.String(), data, 0777)
-		if err != nil {
-			return err
-		}
+			err = os.MkdirAll(trackBuffer.String(), 0777)
+			if err != nil {
+				return
+			}
 
-		return nil
+			trackBuffer.WriteString("/")
+			trackBuffer.WriteString(track.Title)
+			trackBuffer.WriteString(".mp3")
+
+			err = ioutil.WriteFile(trackBuffer.String(), data, 0777)
+			if err != nil {
+				return
+			}
+
+			trackBuffer.Reset()
+			trackBuffer.WriteString("Downloading ")
+			trackBuffer.WriteString(track.Title)
+			trackBuffer.WriteString(" completed.")
+
+			fmt.Println(trackBuffer.String())
+			waitGroup.Done()
+		}(app, &app.Tracklist[i], &waitGroup)
 	}
 
+	waitGroup.Wait()
 	return nil
 }
 
 func (track *Track) Download() ([]byte, error) {
 	var urlBuffer bytes.Buffer
-	// sourceUrlPieces := strings.Split(track.SourceUrl, "=")
 	epoch := strconv.Itoa(int(time.Now().Unix()))
 
-	// http://www.youtube-mp3.org/api/pushItem/?item=#{video_url}&xy=yx&bf=false&r=#{Time.now.to_i}
+	// http://www.youtube-mp3.org/a/pushItem/?item=VIDEO_URL&el=na&bf=false&r=EPOCH&s=SIGNATURE
 	urlBuffer.WriteString("http://www.youtube-mp3.org/a/pushItem/?item=")
-	// urlBuffer.WriteString(url.QueryEscape(track.SourceUrl))
 	urlBuffer.WriteString(track.SourceUrl)
 	urlBuffer.WriteString("&el=na&bf=false&r=")
 	urlBuffer.WriteString(epoch)
 
-	signature := signUrl(urlBuffer.String())
+	sig1 := signUrl(urlBuffer.String())
 	urlBuffer.WriteString("&s=")
-	urlBuffer.WriteString(signature)
+	urlBuffer.WriteString(sig1)
 
-	fmt.Println("DOWNLOADING TRACK FROM:", urlBuffer.String())
+	fmt.Println("Requesting Track Conversion:", urlBuffer.String())
 
-	data, err := getResponseBodyFromUrl(urlBuffer.String())
+	videoIdBytes, err := getResponseBodyFromUrl(urlBuffer.String(), true)
+	if err != nil {
+		return nil, err
+	}
+	videoId := string(videoIdBytes)
+
+	// http://www.youtube-mp3.org/api/itemInfo/?video_id=#{video_id}&ac=www&r=#{Time.now.to_i}
+	urlBuffer.Reset()
+	urlBuffer.WriteString("http://www.youtube-mp3.org/a/itemInfo/?video_id=")
+	urlBuffer.WriteString(url.QueryEscape(videoId))
+	urlBuffer.WriteString("&ac=www&t=grp&r=")
+	urlBuffer.WriteString(epoch)
+
+	sig2 := signUrl(urlBuffer.String())
+	urlBuffer.WriteString("&s=")
+	urlBuffer.WriteString(sig2)
+
+	fmt.Println("Getting Track Hash:", urlBuffer.String())
+
+	data, err := getResponseBodyFromUrl(urlBuffer.String(), true)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("DATA:", string(data[:len(data)]))
+	re := regexp.MustCompile(`"h": *"(\w+)"`)
+	videoHash := re.FindStringSubmatch(string(data))[1]
 
-	// "http://www.youtube-mp3.org/get?ab=128&video_id="+video_id+"&h="+info.h+"&r="+timeNow+"."+cc(video_id+timeNow)
-	// urlBuffer.Reset()
-	// urlBuffer.WriteString("http://www.youtube-mp3.org/get?ab=128&video_id=")
-	// urlBuffer.WriteString(sourceUrlPieces[len(sourceUrlPieces)-1])
-	// urlBuffer.WriteString("&h=")
-	// urlBuffer.WriteString()
-	// urlBuffer.WriteString("&r=")
-	// urlBuffer.WriteString()
-	// urlBuffer.WriteString()
+	fmt.Println("VIDEO HASH:", videoHash)
+
+	// http://www.youtube-mp3.org/get?ab=128&video_id=xPf__WDYR_o&h=77aaa351474477724b9faf2e57d3cbdc&r=1415889212983.1594099374&s=86726
+	urlBuffer.Reset()
+	urlBuffer.WriteString("http://www.youtube-mp3.org/get?ab=128&video_id=")
+	urlBuffer.WriteString(url.QueryEscape(videoId))
+	urlBuffer.WriteString("&h=")
+	urlBuffer.WriteString(videoHash)
+	urlBuffer.WriteString("&r=")
+	urlBuffer.WriteString(epoch)
+	urlBuffer.WriteString(".")
+
+	var stringBuffer bytes.Buffer
+	stringBuffer.WriteString(videoId)
+	stringBuffer.WriteString(epoch)
+	urlBuffer.WriteString(cc(stringBuffer.String()))
+
+	sig3 := signUrl(urlBuffer.String())
+	urlBuffer.WriteString("&s=")
+	urlBuffer.WriteString(sig3)
+
+	fmt.Println("Downloading Track:", urlBuffer.String())
+
+	data, err = getResponseBodyFromUrl(urlBuffer.String(), false)
+	if err != nil {
+		return nil, err
+	}
 
 	return data, nil
 }
