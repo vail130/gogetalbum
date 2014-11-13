@@ -39,18 +39,18 @@ func getResponseBodyFromUrl(url string, gzipDeflate bool) ([]byte, error) {
 	if gzipDeflate {
 		defer dataSource.Close()
 		compressedData, err := gzip.NewReader(dataSource)
-	    if err != nil {
-	        return nil, err
-	    }
-		
-	    dataSource = compressedData
+		if err != nil {
+			return nil, err
+		}
+
+		dataSource = compressedData
 	}
 
-    defer dataSource.Close()
-    data, err := ioutil.ReadAll(dataSource)
-    if err != nil {
-        return nil, err
-    }
+	defer dataSource.Close()
+	data, err := ioutil.ReadAll(dataSource)
+	if err != nil {
+		return nil, err
+	}
 	return data, nil
 }
 
@@ -101,5 +101,5 @@ func cc(a string) string {
 		b = (b + d) % AM
 		c = (c + b) % AM
 	}
-	return strconv.Itoa(c << 16 | b)
+	return strconv.Itoa(c<<16 | b)
 }
