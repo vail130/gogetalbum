@@ -32,10 +32,17 @@ type Track struct {
 }
 
 func Start() error {
+	outputDir := ""
+	if len(os.Args) > 3 {
+		outputDir = os.Args[3]
+	} else {
+		outputDir = "/tmp"
+	}
+
 	app := &App{
 		Artist:    os.Args[1],
 		Album:     os.Args[2],
-		OutputDir: os.Args[3],
+		OutputDir: outputDir,
 	}
 
 	err := app.Run()
@@ -60,6 +67,8 @@ func (app *App) Run() error {
 	if err != nil {
 		return err
 	}
+
+	log.Println("Tracks have been saved to", app.OutputDir)
 
 	return nil
 }
@@ -144,11 +153,11 @@ func (app *App) DownloadTracks() error {
 
 		sourceUrlBuffer.Reset()
 		sourceUrlBuffer.WriteString("https://www.youtube.com")
-		sourceUrlBuffer.WriteString(resourcePath)
+		sourceUrlBuffer.WriteString(bestResourcePath)
 
 		app.Tracklist[i].SourceUrl = sourceUrlBuffer.String()
 
-		fmt.Printf("Found track %s at https://www.youtube.com%s\n", app.Tracklist[i].Title, resourcePath)
+		fmt.Printf("Found track %s at https://www.youtube.com%s\n", app.Tracklist[i].Title, bestResourcePath)
 
 		go DownloadTrack(app, &app.Tracklist[i], &waitGroup)
 		waitGroup.Add(1)
