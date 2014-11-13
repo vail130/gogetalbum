@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	id3 "github.com/mikkyang/id3-go"
+	"github.com/mikkyang/id3-go/v2"
 )
 
 type App struct {
@@ -27,10 +29,6 @@ type Track struct {
 	Title     string
 	Position  int
 	SourceUrl string
-}
-
-type Album struct {
-	Tracklist []Track
 }
 
 func Start() error {
@@ -120,22 +118,37 @@ func (app *App) DownloadTracks() error {
 			return err
 		}
 
-		resourcePath := ""
-		doc.Find("#results .yt-lockup-title > a").Each(func(_ int, s *goquery.Selection) {
-			if len(resourcePath) == 0 {
-				resultTitle := strings.ToLower(s.Text())
+		bestResourcePath := ""
+		backupResourcePath := ""
 
-				if !strings.Contains(resultTitle, "full album") {
-					resourcePath, _ = s.First().Attr("href")
+		doc.Find("#results .yt-lockup-title > a").Each(func(_ int, s *goquery.Selection) {
+			if len(bestResourcePath) == 0 {
+				resultTitle := strings.ToLower(s.Text())
+				trackTitle := strings.ToLower(app.Tracklist[i].Title)
+
+				if strings.Contains(resultTitle, trackTitle) && !strings.Contains(resultTitle, "full album") {
+					bestResourcePath, _ = s.First().Attr("href")
+				}
+			}
+
+			if len(backupResourcePath) == 0 {
+				if !strings.Contains(strings.ToLower(s.Text()), "full album") {
+					backupResourcePath, _ = s.First().Attr("href")
 				}
 			}
 		})
+
+		if len(bestResourcePath) == 0 {
+			bestResourcePath = backupResourcePath
+		}
 
 		sourceUrlBuffer.Reset()
 		sourceUrlBuffer.WriteString("https://www.youtube.com")
 		sourceUrlBuffer.WriteString(resourcePath)
 
 		app.Tracklist[i].SourceUrl = sourceUrlBuffer.String()
+
+		fmt.Printf("Found track %s at https://www.youtube.com%s\n", app.Tracklist[i].Title, resourcePath)
 
 		go DownloadTrack(app, &app.Tracklist[i], &waitGroup)
 		waitGroup.Add(1)
@@ -149,6 +162,8 @@ func DownloadTrack(app *App, track *Track, waitGroup *sync.WaitGroup) {
 	if err != nil {
 		return
 	}
+
+	fmt.Println("Saving", track.Title)
 
 	var trackBuffer bytes.Buffer
 
@@ -167,17 +182,38 @@ func DownloadTrack(app *App, track *Track, waitGroup *sync.WaitGroup) {
 	trackBuffer.WriteString(track.Title)
 	trackBuffer.WriteString(".mp3")
 
-	err = ioutil.WriteFile(trackBuffer.String(), data, 0777)
+	fullTrackPath := trackBuffer.String()
+
+	err = ioutil.WriteFile(fullTrackPath, data, 0777)
 	if err != nil {
 		return
 	}
 
-	trackBuffer.Reset()
-	trackBuffer.WriteString("Downloading ")
-	trackBuffer.WriteString(track.Title)
-	trackBuffer.WriteString(" completed.")
+	fmt.Println("Creating ID3 data for", track.Title)
 
-	fmt.Println(trackBuffer.String())
+	mp3File, err := id3.Open(fullTrackPath)
+	if err != nil {
+		mp3File.Close()
+		return
+	}
+
+	mp3File.SetArtist(app.Artist)
+	mp3File.SetAlbum(app.Album)
+	mp3File.SetTitle(track.Title)
+
+	textFrame := v2.NewTextFrame(v2.V23FrameTypeMap["TRCK"], strconv.Itoa(track.Position))
+	mp3File.AddFrames(textFrame)
+
+	mp3File.Close()
+
+	f, err := id3.Open(fullTrackPath)
+	defer f.Close()
+	if err != nil {
+		return
+	}
+
+	fmt.Println("ID3 info for", track.Title, "-", f.Artist(), f.Album(), f.Title())
+
 	waitGroup.Done()
 }
 
@@ -246,7 +282,7 @@ func (track *Track) Download() ([]byte, error) {
 	urlBuffer.WriteString("&s=")
 	urlBuffer.WriteString(sig3)
 
-	fmt.Println("Downloading Track", track.Title, urlBuffer.String())
+	fmt.Println("Downloading", track.Title, "from", urlBuffer.String())
 
 	data, err = getResponseBodyFromUrl(urlBuffer.String(), false)
 	if err != nil {
