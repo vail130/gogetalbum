@@ -1,9 +1,10 @@
 package main
 
 import (
-	"./app"
 	"log"
 	"os"
+
+	"./app"
 )
 
 func main() {

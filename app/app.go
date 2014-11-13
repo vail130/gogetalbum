@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"net/url"
 	"os"
-	"strings"
+	"strconv"
+	// "strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -54,14 +55,12 @@ func (app *App) Run() error {
 
 	log.Println("Track list", app.Tracklist)
 
-	err = app.GetTrackSources()
+	err = app.DownloadTracks()
 	if err != nil {
 		return err
 	}
 
-	log.Println("Track source urls have been fetched from YouTube")
-
-	// log.Println("Tracks have been downloaded to", app.OutputDir)
+	log.Println("Tracks have been downloaded to", app.OutputDir)
 
 	return nil
 }
@@ -103,7 +102,7 @@ func (app *App) GetTrackList() error {
 	return nil
 }
 
-func (app *App) GetTrackSources() error {
+func (app *App) DownloadTracks() error {
 	var urlBuffer bytes.Buffer
 	var sourceUrlBuffer bytes.Buffer
 	var trackPathBuffer bytes.Buffer
@@ -135,6 +134,7 @@ func (app *App) GetTrackSources() error {
 		}
 
 		trackPathBuffer.Reset()
+
 		trackPathBuffer.WriteString(app.OutputDir)
 		trackPathBuffer.WriteString("/")
 		trackPathBuffer.WriteString(app.Artist)
@@ -154,6 +154,8 @@ func (app *App) GetTrackSources() error {
 		if err != nil {
 			return err
 		}
+
+		return nil
 	}
 
 	return nil
@@ -161,29 +163,38 @@ func (app *App) GetTrackSources() error {
 
 func (track *Track) Download() ([]byte, error) {
 	var urlBuffer bytes.Buffer
+	// sourceUrlPieces := strings.Split(track.SourceUrl, "=")
+	epoch := strconv.Itoa(int(time.Now().Unix()))
+
+	// http://www.youtube-mp3.org/api/pushItem/?item=#{video_url}&xy=yx&bf=false&r=#{Time.now.to_i}
+	urlBuffer.WriteString("http://www.youtube-mp3.org/a/pushItem/?item=")
+	// urlBuffer.WriteString(url.QueryEscape(track.SourceUrl))
+	urlBuffer.WriteString(track.SourceUrl)
+	urlBuffer.WriteString("&el=na&bf=false&r=")
+	urlBuffer.WriteString(epoch)
+
+	signature := signUrl(urlBuffer.String())
+	urlBuffer.WriteString("&s=")
+	urlBuffer.WriteString(signature)
+
+	fmt.Println("DOWNLOADING TRACK FROM:", urlBuffer.String())
+
+	data, err := getResponseBodyFromUrl(urlBuffer.String())
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("DATA:", string(data[:len(data)]))
 
 	// "http://www.youtube-mp3.org/get?ab=128&video_id="+video_id+"&h="+info.h+"&r="+timeNow+"."+cc(video_id+timeNow)
-	urlBuffer.WriteString("http://www.youtube-mp3.org/get?ab=128&video_id=")
-	urlBuffer.WriteString(sourceUrlPieces, sourceUrlPieces[len(sourceUrlPieces) - 1])
-	urlBuffer.WriteString("&h=")
-	urlBuffer.WriteString()
-	urlBuffer.WriteString("&r=")
-	urlBuffer.WriteString()
-	urlBuffer.WriteString()
-
-	trackUrl := urlBuffer.String()
-	fmt.Println("DOWNLOADING TRACK FROM:", trackUrl)
-
-	response, err := http.Get(trackUrl)
-	if err != nil {
-		return nil, err
-	}
-
-	defer response.Body.Close()
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
+	// urlBuffer.Reset()
+	// urlBuffer.WriteString("http://www.youtube-mp3.org/get?ab=128&video_id=")
+	// urlBuffer.WriteString(sourceUrlPieces[len(sourceUrlPieces)-1])
+	// urlBuffer.WriteString("&h=")
+	// urlBuffer.WriteString()
+	// urlBuffer.WriteString("&r=")
+	// urlBuffer.WriteString()
+	// urlBuffer.WriteString()
 
 	return data, nil
 }
