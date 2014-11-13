@@ -54,7 +54,7 @@ func Start() error {
 }
 
 func (app *App) Run() error {
-	log.Println("Getting track list")
+	log.Println("Getting track list for", app.Artist, app.Album)
 
 	err := app.GetTrackList()
 	if err != nil {
@@ -115,7 +115,7 @@ func (app *App) DownloadTracks() error {
 
 	for i, _ := range app.Tracklist {
 		urlBuffer.Reset()
-		urlBuffer.WriteString("https://www.youtube.com/results?filters=video&lclk=video&search_query=guster+goldfly+goldfly+track")
+		urlBuffer.WriteString("https://www.youtube.com/results?filters=video&lclk=video&search_query=")
 		urlBuffer.WriteString(url.QueryEscape(app.Artist))
 		urlBuffer.WriteString("+")
 		urlBuffer.WriteString(url.QueryEscape(app.Album))
