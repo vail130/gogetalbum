@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -226,6 +227,19 @@ func DownloadTrack(app *App, track *Track, waitGroup *sync.WaitGroup) {
 	waitGroup.Done()
 }
 
+func getValueFromResponseForKey(track *Track, responseString string, key string) (string, error) {
+	regexString := fmt.Sprintf(`"%s": *"(\w+)"`, key)
+	re := regexp.MustCompile(regexString)
+	matches := re.FindStringSubmatch(responseString)
+
+	if matches == nil || len(matches) < 2 {
+		fmt.Println("ERROR: Could not find video hash for", track.Title, "from", track.SourceUrl, "in data: ", responseString)
+		return "", errors.New("Missing response key")
+	}
+
+	return matches[1], nil
+}
+
 func (track *Track) Download() ([]byte, error) {
 	var urlBuffer bytes.Buffer
 	epoch := strconv.Itoa(int(time.Now().Unix()))
@@ -262,30 +276,30 @@ func (track *Track) Download() ([]byte, error) {
 		return nil, err
 	}
 
-	re := regexp.MustCompile(`"h": *"(\w+)"`)
-	matches := re.FindStringSubmatch(string(data))
-
-	if matches == nil || len(matches) < 2 {
-		fmt.Println("ERROR: Could not find video hash for", track.Title, "from", track.SourceUrl, "in data: ", string(data))
-		return nil, nil
+	tsCreate, err := getValueFromResponseForKey(track, string(data), "ts_create")
+	if err != nil {
+		return nil, err
+	}
+	r, err := getValueFromResponseForKey(track, string(data), "r")
+	if err != nil {
+		return nil, err
+	}
+	videoHash, err := getValueFromResponseForKey(track, string(data), "h2")
+	if err != nil {
+		return nil, err
 	}
 
-	videoHash := matches[1]
+	// http://www.youtube-mp3.org/get?video_id=KMU0tzLwhbE&ts_create=1434629063&r=MjYwNDoyMDAwOjZiNjI6MjAwOjQ0YzplMmM0OjgwMzA6OTk5OQ%3D%3D&h2=f415b428268972c53f73251b7a08d98b&s=153317
 
-	// http://www.youtube-mp3.org/get?ab=128&video_id=xPf__WDYR_o&h=77aaa351474477724b9faf2e57d3cbdc&r=1415889212983.1594099374&s=86726
 	urlBuffer.Reset()
-	urlBuffer.WriteString("http://www.youtube-mp3.org/get?ab=128&video_id=")
+	urlBuffer.WriteString("http://www.youtube-mp3.org/get?video_id=")
 	urlBuffer.WriteString(url.QueryEscape(videoId))
-	urlBuffer.WriteString("&h=")
-	urlBuffer.WriteString(videoHash)
+	urlBuffer.WriteString("&ts_create=")
+	urlBuffer.WriteString(tsCreate)
 	urlBuffer.WriteString("&r=")
-	urlBuffer.WriteString(epoch)
-	urlBuffer.WriteString(".")
-
-	var stringBuffer bytes.Buffer
-	stringBuffer.WriteString(videoId)
-	stringBuffer.WriteString(epoch)
-	urlBuffer.WriteString(cc(stringBuffer.String()))
+	urlBuffer.WriteString(url.QueryEscape(r))
+	urlBuffer.WriteString("&h2=")
+	urlBuffer.WriteString(videoHash)
 
 	sig3 := signUrl(urlBuffer.String())
 	urlBuffer.WriteString("&s=")
