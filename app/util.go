@@ -7,7 +7,18 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"bytes"
 )
+
+func Concat(strings ...string) string {
+	var buffer bytes.Buffer
+
+	for _, str := range strings {
+		buffer.WriteString(str)
+	}
+
+	return buffer.String()
+}
 
 func getResponseBodyFromUrl(url string, gzipDeflate bool) ([]byte, error) {
 	client := &http.Client{}
@@ -17,17 +28,15 @@ func getResponseBodyFromUrl(url string, gzipDeflate bool) ([]byte, error) {
 	}
 
 	request.Header.Add("Accept", "*/*")
-	request.Header.Add("Accept-Encoding", "gzip, deflate")
-	request.Header.Add("Accept-Language", "en-US,en;q=0.5")
+	request.Header.Add("Accept-Encoding", "gzip, deflate, sdch")
+	request.Header.Add("Accept-Language", "en-US,en;q=0.8")
 	request.Header.Add("Accept-Location", "*")
 	request.Header.Add("Cache-Control", "no-cache")
 	request.Header.Add("Connection", "keep-alive")
-	request.Header.Add("Cookie", "ux=abe39402-fe0f-11e3-ad4e-adc1d2df4a73|0|0|1403882901|1404314901|924c3631a6544bae4c7d14bb6c61838b; __utma=120311424.1287252735.1412343388.1412343388.1412343388.1; __utmz=120311424.1412343388.1.1.utmcsr=google|utmccn=(organic)|utmcmd=organic|utmctr=(not%20provided); ux=abe39402-fe0f-11e3-ad4e-adc1d2df4a73|0|0|1415846498|1416278498|1507184932bddd240ee17f7a55c5215a")
-	request.Header.Add("DNT", "1")
 	request.Header.Add("Host", "www.youtube-mp3.org")
 	request.Header.Add("Pragma", "no-cache")
 	request.Header.Add("Referer", "http://www.youtube-mp3.org/")
-	request.Header.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36")
+	request.Header.Add("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36")
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -86,6 +95,7 @@ func signUrl(url string) string {
 		N = N * 0.1
 	}
 
+	// Add 0.5 then floor is equivalent to rounding
 	N = math.Floor((N * 1000.0) + 0.5)
 	return strconv.Itoa(int(N))
 }
@@ -101,5 +111,5 @@ func cc(a string) string {
 		b = (b + d) % AM
 		c = (c + b) % AM
 	}
-	return strconv.Itoa(c<<16 | b)
+	return strconv.Itoa(c << 16 | b)
 }

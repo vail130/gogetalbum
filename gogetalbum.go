@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"./app"
+	"github.com/vail130/gogetalbum/app"
 )
 
 func main() {

@@ -228,12 +228,12 @@ func DownloadTrack(app *App, track *Track, waitGroup *sync.WaitGroup) {
 }
 
 func getValueFromResponseForKey(track *Track, responseString string, key string) (string, error) {
-	regexString := fmt.Sprintf(`"%s": *"(\w+)"`, key)
+	regexString := fmt.Sprintf(`"%s":"?([a-zA-Z0-9_=-]+)"?`, key)
 	re := regexp.MustCompile(regexString)
 	matches := re.FindStringSubmatch(responseString)
 
 	if matches == nil || len(matches) < 2 {
-		fmt.Println("ERROR: Could not find video hash for", track.Title, "from", track.SourceUrl, "in data: ", responseString)
+		fmt.Println("ERROR: Could not find key", key, "for", track.Title, "from", track.SourceUrl, "in data: ", responseString)
 		return "", errors.New("Missing response key")
 	}
 
@@ -245,8 +245,8 @@ func (track *Track) Download() ([]byte, error) {
 	epoch := strconv.Itoa(int(time.Now().Unix()))
 
 	// http://www.youtube-mp3.org/a/pushItem/?item=VIDEO_URL&el=na&bf=false&r=EPOCH&s=SIGNATURE
-	urlBuffer.WriteString("http://www.youtube-mp3.org/a/pushItem/?item=")
-	urlBuffer.WriteString(track.SourceUrl)
+	urlBuffer.WriteString("/a/pushItem/?item=")
+	urlBuffer.WriteString(url.QueryEscape(track.SourceUrl))
 	urlBuffer.WriteString("&el=na&bf=false&r=")
 	urlBuffer.WriteString(epoch)
 
@@ -254,7 +254,7 @@ func (track *Track) Download() ([]byte, error) {
 	urlBuffer.WriteString("&s=")
 	urlBuffer.WriteString(sig1)
 
-	videoIdBytes, err := getResponseBodyFromUrl(urlBuffer.String(), true)
+	videoIdBytes, err := getResponseBodyFromUrl(Concat("http://www.youtube-mp3.org", urlBuffer.String()), false)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (track *Track) Download() ([]byte, error) {
 
 	// http://www.youtube-mp3.org/api/itemInfo/?video_id=#{video_id}&ac=www&r=#{Time.now.to_i}
 	urlBuffer.Reset()
-	urlBuffer.WriteString("http://www.youtube-mp3.org/a/itemInfo/?video_id=")
+	urlBuffer.WriteString("/a/itemInfo/?video_id=")
 	urlBuffer.WriteString(url.QueryEscape(videoId))
 	urlBuffer.WriteString("&ac=www&t=grp&r=")
 	urlBuffer.WriteString(epoch)
@@ -271,7 +271,7 @@ func (track *Track) Download() ([]byte, error) {
 	urlBuffer.WriteString("&s=")
 	urlBuffer.WriteString(sig2)
 
-	data, err := getResponseBodyFromUrl(urlBuffer.String(), true)
+	data, err := getResponseBodyFromUrl(Concat("http://www.youtube-mp3.org", urlBuffer.String()), true)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +292,7 @@ func (track *Track) Download() ([]byte, error) {
 	// http://www.youtube-mp3.org/get?video_id=KMU0tzLwhbE&ts_create=1434629063&r=MjYwNDoyMDAwOjZiNjI6MjAwOjQ0YzplMmM0OjgwMzA6OTk5OQ%3D%3D&h2=f415b428268972c53f73251b7a08d98b&s=153317
 
 	urlBuffer.Reset()
-	urlBuffer.WriteString("http://www.youtube-mp3.org/get?video_id=")
+	urlBuffer.WriteString("/get?video_id=")
 	urlBuffer.WriteString(url.QueryEscape(videoId))
 	urlBuffer.WriteString("&ts_create=")
 	urlBuffer.WriteString(tsCreate)
@@ -305,9 +305,9 @@ func (track *Track) Download() ([]byte, error) {
 	urlBuffer.WriteString("&s=")
 	urlBuffer.WriteString(sig3)
 
-	fmt.Println("Downloading", track.Title, "from", urlBuffer.String())
+	fmt.Println("Downloading", track.Title, "from", Concat("http://www.youtube-mp3.org", urlBuffer.String()))
 
-	data, err = getResponseBodyFromUrl(urlBuffer.String(), false)
+	data, err = getResponseBodyFromUrl(Concat("http://www.youtube-mp3.org", urlBuffer.String()), false)
 	if err != nil {
 		return nil, err
 	}
